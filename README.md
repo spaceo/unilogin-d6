@@ -1,4 +1,5 @@
-unilogin-d6
-===========
+Unilogin
+========
 
-Unilogin for drupal 6
+Unilogin drupal module project
+Integrates Unilogin with Drupal login

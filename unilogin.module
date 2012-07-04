@@ -1,0 +1,112 @@
+<?php
+
+function unilogin_init(){
+  // Make this configurable instead:
+  module_load_include('inc', 'unilogin', 'unilogin.vars');
+  
+  if(empty($_GET['user'])) return;
+  $user_id = $_GET['user'];
+  
+  $varnames = array(
+    'unilogin_active',
+    'unilogin_path_ws_infotjeneste',
+    'unilogin_wsbrugerid',
+    'unilogin_wspassword',
+  );
+  if(!_unilogin_check_vars($varnames)) return;
+  $Client = new SoapClient(variable_get('unilogin_path_ws_infotjeneste', ''));
+  $institution_list = $Client->hentInstitutionsliste(
+    array(
+      'brugerid' => $user_id,
+      'wsPassword' => variable_get('unilogin_wspassword', ''),
+      "wsBrugerid"=> variable_get('unilogin_wsbrugerid', '')
+    )
+  );
+  $person = $Client->hentPerson(
+    array(
+      "brugerid" => $user_id,
+      "wsPassword" => variable_get('unilogin_wspassword', ''),
+      "wsBrugerid" => variable_get('unilogin_wsbrugerid', '')
+    )
+  );
+  adapt_debug('mikkel', $person);
+  
+}
+
+//function unilogin_form_user_login_block_alter(&$form, &$form_state){
+//  $form['#suffix'] = '<p>abemad</p>';
+//}
+
+/**
+ * Implements hook_block.
+ */
+function unilogin_block ($op = 'list', $delta = 0, $edit = array()) {
+  switch ($op) {
+    case 'list':
+      $blocks[0]['info'] = t('Unilogin');
+      $blocks[0]['cache'] = BLOCK_NO_CACHE;
+      return $blocks;
+      break;
+  case 'view':
+    $block = array('title' => '', 'content' => '');
+    $varnames = array(
+      'unilogin_active',
+      'unilogin_id',
+      'unilogin_path_login',
+      'unilogin_path_return',
+      'unilogin_token_auth'
+    );
+    // If user is logged in
+    // or all variables needed are not present return empty block;
+    if (user_is_logged_in() || !_unilogin_check_vars($varnames)) return $block;
+    // Otherwise show a link to Unilogin.
+    $block['content'] = _unilogin_link();
+    
+    return $block;
+    break;
+  }
+}
+
+/**
+ * A variable testing function.
+ * 
+ * @param array $varnames
+ *  The names of the variables to test.
+ * @param string $mode
+ *  Which testing mode are we using?
+ * @return boolean
+ *   The test either passes or fails.
+ */
+function _unilogin_check_vars($varnames, $mode='all_set'){
+  switch ($varnames){
+    case 'all_set':
+      foreach($varnames as $varname){
+        if(!variable_get($varname, FALSE)) return FALSE;
+      }
+      break;
+  }
+  return TRUE;
+    
+}
+
+/**
+ * Renders a link to the verification site.
+ * 
+ * @return string
+ *  HTML.
+ */
+function _unilogin_link(){
+  $query_params = array(
+    'id' => variable_get('unilogin_id', ''),
+    'path' => variable_get('unilogin_path_return', ''),
+    'auth' => variable_get('unilogin_token_auth', ''),
+  );
+  $query = '';
+  array_walk($query_params, function($value, $key) use (&$query){ $query .= "$key=$value&";      }
+  );
+  return l(
+    t('Go to UNI Login'),
+    variable_get('unilogin_path_login', ''),
+    array('query' => $query)
+  );
+}
