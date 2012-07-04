@@ -14,7 +14,16 @@ function unilogin_init(){
     'unilogin_wspassword',
   );
   if(!_unilogin_check_vars($varnames)) return;
-  $Client = new SoapClient(variable_get('unilogin_path_ws_infotjeneste', ''));
+  
+  // Set the soap client.
+  // Throws error in drupal_set_message if anything goes wrong.
+  try {
+    $Client = new SoapClient(variable_get('unilogin_path_ws_infotjeneste', ''));
+  } catch (SoapFault $ex) {
+    drupal_set_message($ex->faultstring, 'error');
+    return;
+  }
+  
   $institution_list = $Client->hentInstitutionsliste(
     array(
       'brugerid' => $user_id,
@@ -29,13 +38,7 @@ function unilogin_init(){
       "wsBrugerid" => variable_get('unilogin_wsbrugerid', '')
     )
   );
-  adapt_debug('mikkel', $person);
-  
 }
-
-//function unilogin_form_user_login_block_alter(&$form, &$form_state){
-//  $form['#suffix'] = '<p>abemad</p>';
-//}
 
 /**
  * Implements hook_block.
@@ -102,7 +105,11 @@ function _unilogin_link(){
     'auth' => variable_get('unilogin_token_auth', ''),
   );
   $query = '';
-  array_walk($query_params, function($value, $key) use (&$query){ $query .= "$key=$value&";      }
+  array_walk(
+    $query_params,
+    function($value, $key) use (&$query){
+      $query .= "$key=$value&";
+    }
   );
   return l(
     t('Go to UNI Login'),
