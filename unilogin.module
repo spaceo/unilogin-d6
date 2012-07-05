@@ -1,15 +1,21 @@
 <?php
 
 /**
+ * Include db operation functions.
+ */
+module_load_include('inc', 'unilogin', 'unilogin.db');
+
+/**
  * Implements hook_init.
  */
 function unilogin_init(){
-  // Both user auth and timestamp has to be present in $_GET befor we do anything.
-  if(empty($_GET['user']) || empty($_GET['auth']) || empty($_GET['timestamp'])) return;
-  
   // Make this configurable instead:
   module_load_include('inc', 'unilogin', 'unilogin.vars');
-  $user_id = $_GET['user'];
+  if(!_unilogin_is_in_unilogin_callback_state()) return;
+  _unilogin_authenticate($_GET['user']);
+}
+
+function _unilogin_authenticate($user_id){
   
   $varnames = array(
     'unilogin_active',
@@ -19,7 +25,6 @@ function unilogin_init(){
   );
   // All the needed drupal variables has to be present before we continue.
   if(!_unilogin_check_vars($varnames)) return;
-  
   // Set the soap client.
   // Throws error in drupal_set_message if anything goes wrong.
   try {
@@ -36,8 +41,9 @@ function unilogin_init(){
   );
   
   $person = $Client->hentPerson($ws_credentials);
+  $unilogin_id = $person->return->Brugerid;
   // Check if the unilogin exists in our system.
-  $uid = _unilogin_load_uid_by_unilogin_id($person->return->Brugerid);
+  $uid = _unilogin_db_load_uid_by_unilogin_id($unilogin_id);
   // If unilogin id is not registered do nothing.
   if(!$uid) return;
   // Load user.
@@ -121,10 +127,13 @@ function _unilogin_link(){
       $query .= "$key=$value&";
     }
   );
-  return l(
-    t('Go to UNI Login'),
+  return '<h3>' . t('Login via') . ':</h3>' . l(
+    theme(
+      'image',
+      drupal_get_path('module', 'unilogin') . '/images/uni-login-16pt.png'
+    ),
     variable_get('unilogin_path_login', ''),
-    array('query' => $query)
+    array('query' => $query, 'html' => TRUE)
   );
 }
 
@@ -138,7 +147,7 @@ function _unilogin_link(){
  */
 function unilogin_form_user_profile_form_alter(&$form, &$form_state){
   $user = $form['_account']['#value'];
-  $unilogin_id_db = _unilogin_load_unilogin_id_by_uid($user->uid);
+  $unilogin_id_db = _unilogin_db_load_unilogin_id_by_uid($user->uid);
   $unilogin_id = !empty($unilogin_id_db) ? $unilogin_id_db : '';
   
   $form['account']['unilogin_id'] = array (
@@ -148,8 +157,13 @@ function unilogin_form_user_profile_form_alter(&$form, &$form_state){
     '#maxlength' => 60,
     '#description' => t('The user uni login id.'),
   );
-  $form['#validate'][] = '_unilogin_form_user_profile_validate';
+  $form['#validate'][] = '_unilogin_form_user_edit_validate';
   $form['#submit'][] = '_unilogin_form_user_profile_submit';
+}
+
+function ntsnet_unilogin_form_alter(&$form, $form_state, $form_id) {
+  if (!in_array($form_id, array('user_login', 'user_login_block'))) return;
+  $form['#validate'][] = '_unilogin_user_login_validate';
 }
 
 /**
@@ -164,7 +178,7 @@ function _unilogin_form_user_profile_submit($form, &$form_state){
   $values = $form_state['values'];
   $user = $form['_account']['#value'];
   // Save unilogin id.
-  _unilogin_save_unilogin_id($user->uid, $values['unilogin_id']);
+  _unilogin_db_save_unilogin_id($user->uid, $values['unilogin_id']);
 }
 
 /**
@@ -176,10 +190,10 @@ function _unilogin_form_user_profile_submit($form, &$form_state){
  * @param array $form_state
  *   Drupal form state array.
  */
-function _unilogin_form_user_profile_validate($form, &$form_state){
+function _unilogin_form_user_edit_validate($form, &$form_state){
   $values = $form_state['values'];
   $user = $form['_account']['#value'];
-  $uid_db = _unilogin_load_uid_by_unilogin_id($values['unilogin_id']);
+  $uid_db = _unilogin_db_load_uid_by_unilogin_id($values['unilogin_id']);
   // If another user saved a record with the same unilogin_id set an error.
   if(!empty($uid_db) && $uid_db != $user->uid){
     form_set_error(
@@ -190,51 +204,22 @@ function _unilogin_form_user_profile_validate($form, &$form_state){
 }
 
 /**
- * Save unilogin id
+ * Unilogin user validate function. Used for external authentication.
  * 
- * @param integer $uid
- *   Drupal user id.
- * @param string $unilogin_id
- *   Unilogin id.
- * @return void
+ * @param array $form
+ *   Drupal form array.
+ * @param array $form_state
+ *   Drupal form state array.
  */
-function _unilogin_save_unilogin_id($uid, $unilogin_id){
-  if(empty($uid) || empty($unilogin_id)) return;
-  $Uni = new stdClass();
-  $Uni->uid = $uid;
-  $Uni->unilogin_id = $unilogin_id;
-  $unilogin_db = _unilogin_load_unilogin_id_by_uid($uid);
-  if(!$unilogin_db){
-    drupal_write_record('unilogin_users', $Uni);
-  }elseif($unilogin_db != $unilogin_id){
-    drupal_write_record('unilogin_users', $Uni, 'uid');
-  }
+function _unilogin_user_login_validate($form, &$form_state){
+  $values = $form_state['values'];
+  _unilogin_authenticate($values['name']);
 }
 
 /**
- * Get user id from a unilogin id.
- * 
- * @param string $unilogin_id
- * @return mixed
- *   integer/FALSE
+ * Decide if we are in unilogin callback state.
+ * @return type
  */
-function _unilogin_load_uid_by_unilogin_id($unilogin_id){
-  if(empty($unilogin_id)) return;
-  return db_result(
-    db_query("SELECT uid FROM {unilogin_users} WHERE unilogin_id = '%s'", $unilogin_id)
-  );
-}
-
-/**
- * Get unilogin id from user id.
- * 
- * @param integer $uid
- * @return mixed
- *   string/FALSE
- */
-function _unilogin_load_unilogin_id_by_uid($uid){
-  if(empty($uid)) return;
-  return db_result(
-    db_query("SELECT unilogin_id FROM {unilogin_users} WHERE uid = %d", $uid)
-  );
+function _unilogin_is_in_unilogin_callback_state(){
+  return !empty($_GET['user']) || !empty($_GET['auth']) || !empty($_GET['timestamp']);
 }

@@ -41,6 +41,32 @@ function unilogin_schema(){
       'unilogin_id' => array('unilogin_id')
     ),
   );
+  
+  $schema['unilogin_sessions'] = array(
+  'description' => t('Stores relation between session id and unilogin_id'),
+  'fields' => array(
+    'sid' => array(
+      'description' => t('Session id'),
+      'type' => 'varchar',
+      'length' => '64',
+      'not null' => TRUE,
+      'default' => '',
+    ),
+    'unilogin_id' => array(
+      'description' => t('External Unilogin user id.'),
+      'type' => 'varchar',
+      'length' => '60',
+      'not null' => TRUE,
+      'default' => '0',
+    ),
+  ),
+  'primary key' => array('unilogin_id'),
+  'unique keys' => array(
+    'sid' => array('sid'),
+    'unilogin_id' => array('unilogin_id')
+  ),
+);
+
   return $schema;
 }
 
