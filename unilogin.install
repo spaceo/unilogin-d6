@@ -1,1 +1,53 @@
 <?php
+
+/**
+ * Schema for unilogin users:
+ * uid: int(10) unsigned, no null
+ * unilogin_id: varchar(60), no null, unique.
+ * 
+ * 
+ * 
+ * 
+ * CREATE TABLE `unilogin_users` (
+  `uid` int(10) unsigned NOT NULL DEFAULT '0',
+  `unilogin_id` varchar(60) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`uid`, `unilogin_id`),
+  UNIQUE KEY `unilogin_id` (`unilogin_id`)
+  )
+ */
+
+function unilogin_schema(){
+  $schema['unilogin_users'] = array(
+    'description' => t('Stores the relation between Unilogin ws user id\'s and the Drupal user id\'s.'),
+    'fields' => array(
+      'uid' => array(
+        'description' => t('The internal Drupal user id.'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'unilogin_id' => array(
+        'description' => t('External Unilogin user id.'),
+        'type' => 'varchar',
+        'length' => '60',
+        'not null' => TRUE,
+        'default' => '0',
+      ),
+    ),
+    'primary key' => array('uid'),
+    'unique keys' => array(
+      'uid' => array('uid'),
+      'unilogin_id' => array('unilogin_id')
+    ),
+  );
+  return $schema;
+}
+
+function unilogin_install() {
+  drupal_install_schema('unilogin');
+}
+
+function unilogin_uninstall() {
+  drupal_uninstall_schema('unilogin');
+}
