@@ -2,7 +2,6 @@
 
 /**
  * Implements hook_init.
- * 
  */
 function unilogin_init(){
   // Both user auth and timestamp has to be present in $_GET befor we do anything.
