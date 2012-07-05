@@ -1,6 +1,7 @@
 <?php
 
 function unilogin_init(){
+//  return;
   // Make this configurable instead:
   module_load_include('inc', 'unilogin', 'unilogin.vars');
   
@@ -23,21 +24,15 @@ function unilogin_init(){
     drupal_set_message($ex->faultstring, 'error');
     return;
   }
+  $ws_credentials = array(
+    'brugerid' => $user_id,
+    'wsPassword' => variable_get('unilogin_wspassword', ''),
+    "wsBrugerid"=> variable_get('unilogin_wsbrugerid', '')
+  );
   
-  $institution_list = $Client->hentInstitutionsliste(
-    array(
-      'brugerid' => $user_id,
-      'wsPassword' => variable_get('unilogin_wspassword', ''),
-      "wsBrugerid"=> variable_get('unilogin_wsbrugerid', '')
-    )
-  );
-  $person = $Client->hentPerson(
-    array(
-      "brugerid" => $user_id,
-      "wsPassword" => variable_get('unilogin_wspassword', ''),
-      "wsBrugerid" => variable_get('unilogin_wsbrugerid', '')
-    )
-  );
+//  $institution_list = $Client->hentInstitutionsliste($ws_credentials);
+  $person = $Client->hentPerson($ws_credentials);
+  adapt_debug('mikkel', $person);
 }
 
 /**
@@ -115,5 +110,73 @@ function _unilogin_link(){
     t('Go to UNI Login'),
     variable_get('unilogin_path_login', ''),
     array('query' => $query)
+  );
+}
+
+
+function unilogin_form_alter(&$form, &$form_state, $form_id){
+  /*
+   * user_profile_form
+   */
+}
+
+function unilogin_form_user_profile_form_alter(&$form, &$form_state){
+  $user = $form['_account']['#value'];
+  $unilogin_id_db = _unilogin_load_unilogin_id_by_uid($user->uid);
+  $unilogin_id = !empty($unilogin_id_db) ? $unilogin_id_db : '';
+  
+  $form['account']['unilogin_id'] = array (
+    '#type' => 'textfield',
+    '#title' => 'UNI Login id',
+    '#default_value' => $unilogin_id,
+    '#maxlength' => 60,
+    '#description' => t('The user uni login id.'),
+  );
+  $form['#validate'][] = '_unilogin_form_user_profile_validate';
+  $form['#submit'][] = '_unilogin_form_user_profile_submit';
+}
+
+function _unilogin_form_user_profile_submit($form, &$form_state){
+  $values = $form_state['values'];
+  $user = $form['_account']['#value'];
+  _unilogin_save_unilogin_id($user->uid, $values['unilogin_id']);
+}
+
+function _unilogin_form_user_profile_validate($form, &$form_state){
+  $values = $form_state['values'];
+  $user = $form['_account']['#value'];
+  $uid_db = _unilogin_load_uid_by_unilogin_id($values['unilogin_id']);
+  if(!empty($uid_db) && $uid_db != $user->uid){
+    form_set_error(
+      'unilogin_id',
+      t('Another user is already using the unilogin. Please pick another one.')
+    );
+  }
+}
+
+function _unilogin_save_unilogin_id($uid, $unilogin_id){
+  if(empty($uid) || empty($unilogin_id)) return;
+  $Uni = new stdClass();
+  $Uni->uid = $uid;
+  $Uni->unilogin_id = $unilogin_id;
+  $unilogin_db = _unilogin_load_unilogin_id_by_uid($uid);
+  if(!$unilogin_db){
+    drupal_write_record('unilogin_users', $Uni);
+  }elseif($unilogin_db != $unilogin_id){
+    drupal_write_record('unilogin_users', $Uni, 'uid');
+  }
+}
+
+function _unilogin_load_uid_by_unilogin_id($unilogin_id){
+  if(empty($unilogin_id)) return;
+  return db_result(
+    db_query("SELECT uid FROM {unilogin_users} WHERE unilogin_id = '%s'", $unilogin_id)
+  );
+}
+
+function _unilogin_load_unilogin_id_by_uid($uid){
+  if(empty($uid)) return;
+  return db_result(
+    db_query("SELECT unilogin_id FROM {unilogin_users} WHERE uid = %d", $uid)
   );
 }
