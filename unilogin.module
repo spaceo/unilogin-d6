@@ -1,11 +1,15 @@
 <?php
 
+/**
+ * Implements hook_init.
+ * 
+ */
 function unilogin_init(){
-//  return;
+  // Both user auth and timestamp has to be present in $_GET befor we do anything.
+  if(empty($_GET['user']) || empty($_GET['auth']) || empty($_GET['timestamp'])) return;
+  
   // Make this configurable instead:
   module_load_include('inc', 'unilogin', 'unilogin.vars');
-  
-  if(empty($_GET['user'])) return;
   $user_id = $_GET['user'];
   
   $varnames = array(
@@ -14,6 +18,7 @@ function unilogin_init(){
     'unilogin_wsbrugerid',
     'unilogin_wspassword',
   );
+  // All the needed drupal variables has to be present before we continue.
   if(!_unilogin_check_vars($varnames)) return;
   
   // Set the soap client.
@@ -24,15 +29,26 @@ function unilogin_init(){
     drupal_set_message($ex->faultstring, 'error');
     return;
   }
+  // Web service access credentials.
   $ws_credentials = array(
     'brugerid' => $user_id,
     'wsPassword' => variable_get('unilogin_wspassword', ''),
     "wsBrugerid"=> variable_get('unilogin_wsbrugerid', '')
   );
   
-//  $institution_list = $Client->hentInstitutionsliste($ws_credentials);
   $person = $Client->hentPerson($ws_credentials);
-  adapt_debug('mikkel', $person);
+  // Check if the unilogin exists in our system.
+  $uid = _unilogin_load_uid_by_unilogin_id($person->return->Brugerid);
+  // If unilogin id is not registered do nothing.
+  if(!$uid) return;
+  // Load user.
+  $account = user_load($uid);
+  // If the user load fails do nothing.
+  if(empty($account)) return;
+  // Login user.
+  user_external_login($account);
+  // Redirect user to get rid of unwanted $_GET params.
+  drupal_goto($_GET['q'] != 'node' ? $_GET['q'] : '');
 }
 
 /**
@@ -55,7 +71,7 @@ function unilogin_block ($op = 'list', $delta = 0, $edit = array()) {
       'unilogin_token_auth'
     );
     // If user is logged in
-    // or all variables needed are not present return empty block;
+    // or if one ore more variables needed are empty/undefined return empty block;
     if (user_is_logged_in() || !_unilogin_check_vars($varnames)) return $block;
     // Otherwise show a link to Unilogin.
     $block['content'] = _unilogin_link();
@@ -113,13 +129,14 @@ function _unilogin_link(){
   );
 }
 
-
-function unilogin_form_alter(&$form, &$form_state, $form_id){
-  /*
-   * user_profile_form
-   */
-}
-
+/**
+ * User edit form alter function.
+ * 
+ * @param array $form
+ *   Drupal form array.
+ * @param array $form_state
+ *   Drupal form state array.
+ */
 function unilogin_form_user_profile_form_alter(&$form, &$form_state){
   $user = $form['_account']['#value'];
   $unilogin_id_db = _unilogin_load_unilogin_id_by_uid($user->uid);
@@ -136,16 +153,35 @@ function unilogin_form_user_profile_form_alter(&$form, &$form_state){
   $form['#submit'][] = '_unilogin_form_user_profile_submit';
 }
 
+/**
+ * User edit form submit function.
+ * 
+ * @param array $form
+ *   Drupal form array.
+ * @param array $form_state
+ *   Drupal form state array.
+ */
 function _unilogin_form_user_profile_submit($form, &$form_state){
   $values = $form_state['values'];
   $user = $form['_account']['#value'];
+  // Save unilogin id.
   _unilogin_save_unilogin_id($user->uid, $values['unilogin_id']);
 }
 
+/**
+ * User edit form validate function.
+ * Validates unilogin related fields.
+ * 
+ * @param array $form
+ *   Drupal form array.
+ * @param array $form_state
+ *   Drupal form state array.
+ */
 function _unilogin_form_user_profile_validate($form, &$form_state){
   $values = $form_state['values'];
   $user = $form['_account']['#value'];
   $uid_db = _unilogin_load_uid_by_unilogin_id($values['unilogin_id']);
+  // If another user saved a record with the same unilogin_id set an error.
   if(!empty($uid_db) && $uid_db != $user->uid){
     form_set_error(
       'unilogin_id',
@@ -154,6 +190,15 @@ function _unilogin_form_user_profile_validate($form, &$form_state){
   }
 }
 
+/**
+ * Save unilogin id
+ * 
+ * @param integer $uid
+ *   Drupal user id.
+ * @param string $unilogin_id
+ *   Unilogin id.
+ * @return void
+ */
 function _unilogin_save_unilogin_id($uid, $unilogin_id){
   if(empty($uid) || empty($unilogin_id)) return;
   $Uni = new stdClass();
@@ -167,6 +212,13 @@ function _unilogin_save_unilogin_id($uid, $unilogin_id){
   }
 }
 
+/**
+ * Get user id from a unilogin id.
+ * 
+ * @param string $unilogin_id
+ * @return mixed
+ *   integer/FALSE
+ */
 function _unilogin_load_uid_by_unilogin_id($unilogin_id){
   if(empty($unilogin_id)) return;
   return db_result(
@@ -174,6 +226,13 @@ function _unilogin_load_uid_by_unilogin_id($unilogin_id){
   );
 }
 
+/**
+ * Get unilogin id from user id.
+ * 
+ * @param integer $uid
+ * @return mixed
+ *   string/FALSE
+ */
 function _unilogin_load_unilogin_id_by_uid($uid){
   if(empty($uid)) return;
   return db_result(
