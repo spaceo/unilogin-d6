@@ -1,16 +1,28 @@
 <?php
 
 /**
- * Include db operation functions.
- */
-module_load_include('inc', 'unilogin', 'unilogin.db');
-
-/**
  * Implements hook_init.
  */
+//function unilogin_init(){
+//  module_load_include('inc', 'unilogin', 'unilogin.db');
+//}
+
+function unilogin_menu(){
+  $items['admin/settings/unilogin'] = array(
+    'title' => t('Unilogin configuration'), 
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('unilogin_configuration_form'),
+    'access arguments' => array('access content'), 
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_exit.
+ */
 function unilogin_init(){
-  // Make this configurable instead:
-  module_load_include('inc', 'unilogin', 'unilogin.vars');
+  module_load_include('inc', 'unilogin', 'unilogin.db');
   if(!_unilogin_is_in_unilogin_callback_state()) return;
   _unilogin_authenticate($_GET['user']);
 }
@@ -97,10 +109,10 @@ function unilogin_block ($op = 'list', $delta = 0, $edit = array()) {
  *   The test either passes or fails.
  */
 function _unilogin_check_vars($varnames, $mode='all_set'){
-  switch ($varnames){
+  switch ($mode){
     case 'all_set':
       foreach($varnames as $varname){
-        if(!variable_get($varname, FALSE)) return FALSE;
+        if(!(bool)variable_get($varname, FALSE)) return FALSE;
       }
       break;
   }
@@ -117,8 +129,13 @@ function _unilogin_check_vars($varnames, $mode='all_set'){
 function _unilogin_link(){
   $query_params = array(
     'id' => variable_get('unilogin_id', ''),
-    'path' => variable_get('unilogin_path_return', ''),
-    'auth' => variable_get('unilogin_token_auth', ''),
+    'path' =>  urlencode(
+      base64_encode(variable_get('unilogin_path_return', ''))
+    ),
+    'auth' => md5(
+      variable_get('unilogin_path_return', '')
+      . variable_get('unilogin_token_auth', '')
+    )
   );
   $query = '';
   array_walk(
@@ -221,5 +238,62 @@ function _unilogin_user_login_validate($form, &$form_state){
  * @return type
  */
 function _unilogin_is_in_unilogin_callback_state(){
+  // If there is a logged in user we don't want to do anything.
+  if(user_is_logged_in()) return FALSE;
+  // If neither of these $_GET params are present we are not in unilogin callback state.
   return !empty($_GET['user']) || !empty($_GET['auth']) || !empty($_GET['timestamp']);
+}
+
+function unilogin_configuration_form(){
+  $form = array();
+  $form['unilogin_active'] = array(
+    '#type' => 'radios', 
+    '#title' => t('unilogin_active'), 
+    '#default_value' => variable_get('unilogin_active', 0), 
+    '#options' => array(t('Off'), t('On')),
+  );
+  $form['unilogin_id'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_id'), 
+    '#default_value' => variable_get('unilogin_id', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_path_login'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_path_login'), 
+    '#default_value' => variable_get('unilogin_path_login', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_path_return'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_path_return'), 
+    '#default_value' => variable_get('unilogin_path_return', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_token_auth'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_token_auth'), 
+    '#default_value' => variable_get('unilogin_token_auth', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_path_ws_infotjeneste'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_path_ws_infotjeneste'), 
+    '#default_value' => variable_get('unilogin_path_ws_infotjeneste', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_wsbrugerid'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_wsbrugerid'), 
+    '#default_value' => variable_get('unilogin_wsbrugerid', ''), 
+    '#maxlength' => 127,
+  );
+  $form['unilogin_wspassword'] = array(
+    '#type' => 'textfield', 
+    '#title' => t('unilogin_wspassword'), 
+    '#default_value' => variable_get('unilogin_wspassword', ''), 
+    '#maxlength' => 127,
+  );
+  
+  return system_settings_form($form);
 }

@@ -1,4 +1,4 @@
-name = unilogin
+name = Unilogin
 description = Makes it possible to login via Unilogin (http://www.uni-c.dk/produkter/support/uddannelse/uni-login/index.html)
 package = Adapt
 core = 6.x
